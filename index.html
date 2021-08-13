@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+        <title>Garden Grove - Sewer Asset Viewer</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+            integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+            crossorigin="" />
+        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+            integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+            crossorigin="" ></script>
+        <script src="leaflet.browser.print.min.js"></script>
+    </head>
+    <style>
+        body {
+        padding: 0;
+        margin: 0;
+        }
+        html, body, #map {
+            height: 100vh;
+            width: 100vw;
+        }
+    </style>
+    <body>
+        <div id="map"></div>
+    </body>
+    <script>
+        var serverName = 'sewer';
+        var layerNames = [
+            'non_network_lateral_lines',
+            'pressurized_mains',
+            'gravity_mains',
+            'cleanouts',
+            'fittings',
+            'pump_stations',
+            'manholes'
+        ];
+        var pointLayers = ['cleanouts','fittings','pump_stations','manholes'];
+        var hiddenFields = ['enabled','gdb_geomattr_data','ancillaryrole','globalid'];
+        
+        var map = L.map('map', {
+            renderer: L.canvas()
+        }).setView([33.778724, -117.960058], 13);
+        var ggBasemap = L.tileLayer('https://ggcity.org/tileserver/styles/standard/{z}/{x}/{y}.png').addTo(map);
+        // var nearmapImagery = L.tileLayer.wms('https://wmsus.nearmap.com/wms?REQUEST=GetCapabilities&apikey=MmZjOGI1NzUtMzA5Ny00NzA0LTkxNDgtNzgwNjU2MjE2MTI4', {
+        //     layers: 'NearMap\United_States_of_America\CALIF',
+        // });
+        var ggImagery = L.tileLayer.wms('https://ggcity.org/geoserver/gwc/service/wms', {
+            layers: 'gis:aerials_latest',
+            format: 'image/png'
+        });
+
+        function highlightFeature(layer) {
+            layer.setStyle({
+                opacity: 1
+            });
+        }
+
+        function resetHighlight(layer) {
+            if (selected === null || selected._leaflet_id !== layer._leaflet_id) {
+                layer.setStyle({
+                    opacity: 0
+                });
+            }
+        }
+
+        function select (e) {
+            var layer = e.target;
+
+            if (selected !== null) {
+                var previous = selected;
+            }
+			selected = layer;
+            highlightFeature(selected)
+			if (previous) {
+			  resetHighlight(previous);
+			}
+		}
+
+        var selected = null;
+
+        function onEachFeature (feature, layer) {
+            var title = feature.id.split('.')[0].replaceAll('_', ' ').replace(
+                /\w+/g,
+                function(txt) {
+                    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+                }
+            ).slice(0, -1);
+            var popupContent = 
+                '<h3>' + title  + ' Attributes</h3>\
+                <table>'
+            for (let prop in feature.properties) {
+                if (!hiddenFields.includes(prop)) {
+                    let property_name = prop.replaceAll('_', ' ').replace(
+                        /\w+/g,
+                        function(txt) {
+                            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+                        }
+                    );
+                    let row = 
+                        '<tr>\
+                            <th scope="row">' + property_name + '</th>\
+                            <td>' + (feature.properties[prop] !== null ? feature.properties[prop] : '') + '</td>\
+                        </tr>';
+                    popupContent += row;
+                }
+            }
+            popupContent += '</table>';
+            layer.bindPopup(popupContent, {maxHeight: 400});
+            layer.on('click', select);
+        }
+
+        var geojsonStyle = {
+            "color": "#00FFFF",
+            "weight": 7,
+            "opacity": 0
+        };
+
+        var geojsonMarkerOptions = {
+            radius: 8,
+            color: "#00FFFF",
+            weight: 3,
+            opacity: 0,
+            fillOpacity: 0
+        };
+
+        var baseMaps = {
+            "Garden Grove Basemap": ggBasemap,
+            "Aerial Imagery": ggImagery
+            // "Nearmap Imagery": nearmapImagery
+        };
+        var layerControl = L.control.layers(baseMaps).addTo(map);
+
+        async function createLayers() {
+            for (let i in layerNames) {
+                let layerName = layerNames[i];
+                let layerTitle = layerName.replaceAll('_', ' ').replace(
+                    /\w+/g,
+                    function(txt) {
+                        return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+                    }
+                );
+                let wms = L.tileLayer.wms('https://ggcity.org/geoserver/' + serverName + '/wms', {
+                    layers: serverName + ':' + layerName,
+                    format: 'image/png',
+                    transparent: true
+                });
+
+                var fetchUrl = 'https://ggcity.org/geoserver/sewer/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=' + serverName + '%3A' + layerName + '&outputFormat=application%2Fjson&srsName=EPSG:4326';
+                let response = await fetch(fetchUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                let data = await response.json();
+
+                let geojson;
+                if (pointLayers.includes(layerName)) {
+                    geojson = L.geoJSON(data, { 
+                        onEachFeature: onEachFeature,
+                        pointToLayer: function (feature, latlng) {
+                            return L.circleMarker(latlng, geojsonMarkerOptions);
+                        }
+                    });
+                } else {
+                    geojson = L.geoJSON(data, { 
+                        onEachFeature: onEachFeature,
+                        style: geojsonStyle
+                    });
+                }
+                let group = L.layerGroup([wms, geojson]).addTo(map);
+                layerControl.addOverlay(group, layerTitle);
+            } 
+        }
+
+        createLayers();
+
+        L.control.browserPrint({
+            documentTitle: 'Garden Grove Sewer System',
+            closePopupsOnPrint: false,
+            printModes: [
+                L.control.browserPrint.mode.portrait('Portrait', 'letter'),
+                L.control.browserPrint.mode.landscape('Landscape', 'letter'),
+                L.control.browserPrint.mode.auto('Auto', 'letter'),
+                L.control.browserPrint.mode.custom('Custom', 'letter')
+            ]
+        }).addTo(map);
+
+        map.on('click', function () {
+            if (selected !== null) {
+                selected.setStyle({
+                    opacity: 0
+                });
+            }
+        });
+    </script>
+</html>
