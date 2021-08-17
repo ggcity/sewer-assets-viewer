@@ -27,6 +27,7 @@
         <div id="map"></div>
     </body>
     <script>
+        // Input Variables
         var serverName = 'sewer';
         var layerNames = [
             'non_network_lateral_lines',
@@ -40,6 +41,7 @@
         var pointLayers = ['cleanouts','fittings','pump_stations','manholes'];
         var hiddenFields = ['enabled','gdb_geomattr_data','ancillaryrole','globalid'];
         
+        // Map and Base Layers
         var map = L.map('map', {
             renderer: L.canvas()
         }).setView([33.778724, -117.960058], 13);
@@ -52,6 +54,7 @@
             format: 'image/png'
         });
 
+        // Functions for selecting and highlighting features
         function highlightFeature(layer) {
             layer.setStyle({
                 opacity: 1
@@ -81,6 +84,15 @@
 
         var selected = null;
 
+        map.on('click', function () {
+            if (selected !== null) {
+                selected.setStyle({
+                    opacity: 0
+                });
+            }
+        });
+
+        // Creates and binds popup and assigns layer click function
         function onEachFeature (feature, layer) {
             var title = feature.id.split('.')[0].replaceAll('_', ' ').replace(
                 /\w+/g,
@@ -112,12 +124,14 @@
             layer.on('click', select);
         }
 
+        // Styling for lines
         var geojsonStyle = {
             "color": "#00FFFF",
             "weight": 7,
             "opacity": 0
         };
 
+        // Styling for points
         var geojsonMarkerOptions = {
             radius: 8,
             color: "#00FFFF",
@@ -126,6 +140,7 @@
             fillOpacity: 0
         };
 
+        // Add basemaps to layer controller
         var baseMaps = {
             "Garden Grove Basemap": ggBasemap,
             "Aerial Imagery": ggImagery
@@ -133,6 +148,7 @@
         };
         var layerControl = L.control.layers(baseMaps).addTo(map);
 
+        // Loops through input layers to fetch layer data and add to map/controller
         async function createLayers() {
             for (let i in layerNames) {
                 let layerName = layerNames[i];
@@ -176,8 +192,9 @@
 
         createLayers();
 
+        // Add print function to map
         L.control.browserPrint({
-            documentTitle: 'Garden Grove Sewer System',
+            documentTitle: 'Garden Grove - Sewer Asset Map',
             closePopupsOnPrint: false,
             printModes: [
                 L.control.browserPrint.mode.portrait('Portrait', 'letter'),
@@ -186,13 +203,5 @@
                 L.control.browserPrint.mode.custom('Custom', 'letter')
             ]
         }).addTo(map);
-
-        map.on('click', function () {
-            if (selected !== null) {
-                selected.setStyle({
-                    opacity: 0
-                });
-            }
-        });
     </script>
 </html>
